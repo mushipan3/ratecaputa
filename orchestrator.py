@@ -38,7 +38,7 @@ DESIGN_STATE    = PROJECT_ROOT / "design_state.md"
 LOG_FILE        = PROJECT_ROOT / "orchestrator.log"
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL    = os.environ.get("OLLAMA_MODEL", "gemma3:4b")
+OLLAMA_MODEL    = os.environ.get("OLLAMA_MODEL", "qwen3.5:4b")
 PYTHON_BIN      = os.environ.get("MCP_PYTHON", str(Path.home() / "mcp-env/bin/python3"))
 MAX_ITERATIONS  = int(os.environ.get("MAX_ITERATIONS", "5"))
 

@@ -1,210 +1,290 @@
-# ラテカピュータ 開発環境概要
+# ラテカピュータ 開発環境ガイド
 
 作成日: 2026-04-17  
-対象プロジェクト: ラテカピュータ（ラテカセ筐体組み込みコンピュータ）
+最終更新: 2026-04-17
 
 ---
 
 ## 1. 全体構成
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  AIエージェント（Claude Code / OpenAI Codex CLI）    │
-│  ※トークン上限に達したら相互に引き継ぎ可能          │
-└──────────────────────┬──────────────────────────────┘
-                       │ MCP (Model Context Protocol)
-         ┌─────────────┴──────────────┐
-         ▼                            ▼
-┌─────────────────┐        ┌─────────────────┐
-│ latecaputa-     │        │ latecaputa-     │
-│ cadquery MCP    │        │ kicad MCP       │
-│ (5 tools)       │        │ (6 tools)       │
-└────────┬────────┘        └────────┬────────┘
-         │                          │
-         ▼                          ▼
-┌─────────────────┐        ┌─────────────────┐
-│ CadQuery 2.7.0  │        │ KiCad CLI       │
-│ (3D CAD エンジン)│        │ (PCB設計エンジン) │
-└─────────────────┘        └─────────────────┘
-         │                          │
-         └──────────┬───────────────┘
-                    ▼
-         ~/esp_projects/ratecaputa/
-         （プロジェクトリポジトリ）
+┌──────────────────────────────────────────────────────────────┐
+│                     作業者（あなた）                          │
+│  VS Code または WSLターミナル                                 │
+└───────────┬──────────────┬──────────────┬───────────────────┘
+            │              │              │
+            ▼              ▼              ▼
+        claude          codex     python3 orchestrator.py
+    （Claudeだけ）  （Codexだけ）  （Ollama + Claude 協調）
+            │              │              │
+            └──────────────┴──────────────┘
+                           │
+                  MCP（共通ツール層）
+              ※ どのエージェントも同じMCPを使う
+                           │
+          ┌────────────────┴────────────────┐
+          ▼                                 ▼
+  latecaputa-cadquery MCP          latecaputa-kicad MCP
+  （3D CAD / CadQuery）            （PCB設計 / KiCad）
+          │                                 │
+          ▼                                 ▼
+    CadQuery 2.7.0                    KiCad 7.0.11
+```
+
+**ポイント:** MCPサーバーはWSL内で常時稼働。どのエージェントを使っても同じツールが使える。
+
+---
+
+## 2. 起動方法
+
+### 基本：プロジェクトフォルダへ移動してコマンドを打つだけ
+
+```bash
+cd ~/esp_projects/ratecaputa
+```
+
+これまで通り、VS CodeのターミナルやWSLターミナルでプロジェクトフォルダに移動してコマンドを入力します。MCPサーバーとOllamaはWSL起動時に自動的に動いています。
+
+---
+
+## 3. コマンドの使い分け
+
+### 3-1. Claude だけで作業する（従来通り）
+
+```bash
+claude
+```
+
+- オンライン必須
+- トークンを消費するが品質は最高
+- `.mcp.json` が自動読み込みされ、CadQuery・KiCadツールが使える
+
+### 3-2. Codex CLI だけで作業する
+
+```bash
+codex
+```
+
+- オンライン必須
+- Claudeのトークンが尽きた時の引き継ぎ先
+- 同じ `.mcp.json` を参照するため、作業を継続できる
+
+### 3-3. ローカルLLM だけで作業する（完全オフライン）
+
+```bash
+ollama run gemma3:4b
+```
+
+- オフライン動作
+- インターネット不要
+- 品質はClaudeより低いが、ネット不通時・トークン節約時に使用
+
+### 3-4. ローカルLLM + オンラインレビュー（推奨・トークン節約）
+
+```bash
+python3 orchestrator.py
+```
+
+- **通常作業の推奨コマンド**
+- `design_state.md` を読み込んで次のタスクを提案
+- Ollamaがコードを生成 → Claudeがレビュー・修正 → ループ
+- オフライン時は自動的にOllamaのみで継続
+- 人間の操作が必要な時だけ通知して待機
+
+---
+
+## 4. orchestrator.py の使い方
+
+### 引数なし（インタラクティブモード・推奨）
+
+```bash
+python3 orchestrator.py
+```
+
+1. `design_state.md` を読んでプロジェクト状態を把握
+2. 次にやるべきタスクを1〜3個提案
+3. タスクを選ぶ（番号入力 or 自由入力）
+4. Ollama → 実行 → Claude → ループが自動で動く
+
+### タスクを直接指定する
+
+```bash
+# 自動でタスク種別を判断
+python3 orchestrator.py 'U字パーツを設計して'
+
+# タスク種別・ファイル名・参照画像を明示
+python3 orchestrator.py 'ジョイントアダプタv3を設計して' \
+  -t 3d \
+  -s joint_adapter_v3 \
+  -i cad/section_front.png
+
+# コーディングタスク
+python3 orchestrator.py 'BLE通信モジュールを実装して' \
+  -t code \
+  -s ble_module
+```
+
+### オプション一覧
+
+| オプション | 説明 | 例 |
+|-----------|------|-----|
+| `-t` | タスク種別（3d / pcb / code / auto） | `-t 3d` |
+| `-s` | 出力ファイル名（拡張子なし） | `-s u_bracket` |
+| `-i` | 参照画像（断面スケッチ等） | `-i cad/section.png` |
+| `-m` | Ollamaモデル指定 | `-m gemma3:4b` |
+| `--max-iter` | 最大試行回数（デフォルト5） | `--max-iter 10` |
+
+### 環境変数でデフォルトを変える
+
+```bash
+# モデルを切り替えて実行
+OLLAMA_MODEL=qwen2.5-coder:7b python3 orchestrator.py
+
+# 試行回数を増やして実行
+MAX_ITERATIONS=10 python3 orchestrator.py 'タスク内容'
 ```
 
 ---
 
-## 2. MCPサーバー一覧
+## 5. orchestrator.py の動作フロー
 
-### 2-1. latecaputa-cadquery（3D CAD）
+```
+python3 orchestrator.py
+        │
+        ├─ design_state.md を読み込む
+        ├─ Ollama が次のタスクを提案
+        ├─ あなたがタスクを選択・承認
+        │
+        ▼
+  ┌─────────────────────────────────────┐
+  │  イテレーションループ（最大5回）      │
+  │                                     │
+  │  1. Ollama がコードを生成            │
+  │  2. コードを実行・検証               │
+  │  3. Claude がレビュー・修正          │
+  │  4. フィードバックをOllamaへ返す     │
+  │  5. 完了なら終了、問題あれば繰り返し  │
+  └─────────────────────────────────────┘
+        │
+        ├─ 完了 → design_state.md を更新
+        └─ 人間操作が必要 → 通知して待機
+```
 
-**場所:** `~/mcp-servers/cadquery-mcp/server.py`  
-**実行環境:** `~/mcp-env/bin/python3`（専用仮想環境）  
-**状態:** ✓ 稼働中
+**オフライン時:** ステップ3（Claudeレビュー）をスキップし、Ollamaのみで継続。
 
-| ツール名 | 機能 |
-|----------|------|
-| `cadquery_run` | スクリプトファイルを実行してSTEP出力 |
-| `cadquery_run_inline` | インラインCadQueryコードを直接実行 |
+---
+
+## 6. エージェント引き継ぎ手順
+
+Claudeのトークンが尽きた、またはオフラインになった場合：
+
+```bash
+# Claudeのトークン上限 → Codexへ切り替え
+cd ~/esp_projects/ratecaputa
+codex
+# → 「design_state.md を読んで作業を続けてください」と伝える
+
+# Codex → Claudeへ戻す
+claude
+
+# どちらもトークン上限 → ローカルのみで継続
+python3 orchestrator.py   # 自動でオフラインモードになる
+# または
+ollama run gemma3:4b
+```
+
+---
+
+## 7. MCPサーバー ツール一覧
+
+すべてのエージェント（Claude / Codex / orchestrator）から共通して利用できる。
+
+### 3D CAD（latecaputa-cadquery）
+
+| ツール | 機能 |
+|--------|------|
+| `cadquery_run` | CadQueryスクリプトを実行してSTEP出力 |
+| `cadquery_run_inline` | インラインコードを直接実行 |
 | `list_cad_files` | CADディレクトリのファイル一覧 |
-| `design_state_read` | 引き継ぎファイル（design_state.md）を読み込む |
-| `design_state_update` | 引き継ぎファイルの作業状態を更新する |
+| `design_state_read` | 引き継ぎファイルを読み込む |
+| `design_state_update` | 引き継ぎファイルの作業状態を更新 |
 
-### 2-2. latecaputa-kicad（PCB設計）
+### PCB設計（latecaputa-kicad）
 
-**場所:** `~/mcp-servers/kicad-mcp/server.py`  
-**実行環境:** `~/mcp-env/bin/python3`（同上）  
-**状態:** ✓ 構築済み（KiCadインストール後に完全稼働）
-
-| ツール名 | 機能 |
-|----------|------|
-| `kicad_version` | KiCad CLIのバージョン確認 |
+| ツール | 機能 |
+|--------|------|
+| `kicad_version` | KiCad CLIバージョン確認 |
 | `list_pcb_projects` | PCBプロジェクト一覧 |
-| `pcb_drc` | DRC（デザインルールチェック）実行 |
+| `pcb_drc` | デザインルールチェック |
 | `pcb_export_gerber` | ガーバーファイル出力 |
-| `schematic_erc` | ERC（電気ルールチェック）実行 |
+| `schematic_erc` | 電気ルールチェック |
 | `schematic_export_netlist` | ネットリスト出力 |
 
 ---
 
-## 3. 設定ファイル
+## 8. インストール済みコンポーネント一覧
 
-### 3-1. .mcp.json（プロジェクトルート）
-
-`~/esp_projects/ratecaputa/.mcp.json`
-
-Claude Code・Codex CLI 双方が参照するMCPサーバー設定ファイル。  
-プロジェクトルートに置くことで `cd` するだけで自動読み込みされる。
-
-```json
-{
-  "mcpServers": {
-    "latecaputa-cadquery": { ... },
-    "latecaputa-kicad": { ... }
-  }
-}
-```
-
-### 3-2. .claudeignore
-
-`~/esp_projects/ratecaputa/.claudeignore`
-
-AIのコンテキストから除外するファイルを定義。トークン消費を削減する。
-
-| 除外対象 | 理由 |
-|----------|------|
-| `**/build/` | ESP-IDFビルド中間ファイル（大量・不要） |
-| `**/*.step`, `**/*.stl` | 3D出力バイナリ（テキストとして無意味） |
-| `**/*.jpg`, `**/*.jpeg`, `**/*.png` | 画像ファイル |
-| `**/managed_components/` | ESP-IDF自動管理ライブラリ |
-| `**/__pycache__/` | Pythonキャッシュ |
-| `**/node_modules/` | Node.jsパッケージ（将来のMCP用） |
-
-### 3-3. design_state.md（引き継ぎファイル）
-
-`~/esp_projects/ratecaputa/design_state.md`
-
-**最重要ファイル。** AIエージェントを切り替える際の引き継ぎ書。  
-以下を記録・更新し続ける：
-
-- プロジェクト概要・ハードウェア構成
-- 各パーツの設計進捗状態
-- 現在の作業内容と次にやること
-- 設計上の重要な制約・寸法
-- ファイル構成・ツールチェーン情報
-
-**運用ルール:** 作業終了時に `design_state_update` ツールで更新すること。
+| コンポーネント | バージョン | 場所 |
+|--------------|-----------|------|
+| Python仮想環境 | 3.12.3 | `~/mcp-env/` |
+| CadQuery | 2.7.0 | `~/mcp-env/` |
+| MCP SDK | 1.27.0 | `~/mcp-env/` |
+| KiCad CLI | 7.0.11 | `/usr/bin/kicad-cli` |
+| Ollama | 0.21.0 | `/usr/local/bin/ollama` |
+| gemma3:4b | 3.3GB | Ollamaモデル（Vision対応） |
 
 ---
 
-## 4. Python仮想環境
+## 9. 重要ファイル
 
-**場所:** `~/mcp-env/`  
-**Pythonバージョン:** 3.12.3
-
-| パッケージ | バージョン | 用途 |
-|-----------|-----------|------|
-| cadquery | 2.7.0 | 3D CADエンジン |
-| mcp | 1.27.0 | MCPサーバーSDK |
-| vtk | 9.3.1 | 3Dレンダリング（CadQuery依存） |
-
----
-
-## 5. AIエージェント引き継ぎ手順
-
-トークン上限に達した場合、以下の手順で別エージェントへ引き継ぐ：
-
-### Claude Code → Codex CLI の場合
-
-```bash
-# 1. 現在のエージェントが design_state.md を更新
-#    （design_state_update ツールを使用）
-
-# 2. Codex CLIを起動（.mcp.jsonが自動読み込みされる）
-cd ~/esp_projects/ratecaputa
-codex
-
-# 3. Codex CLIに指示
-# 「design_state.md を読み込んで、作業を続けてください」
-```
-
-### Codex CLI → Claude Code の場合
-
-```bash
-cd ~/esp_projects/ratecaputa
-claude  # .mcp.jsonが自動読み込みされる
-```
+| ファイル | 場所 | 役割 |
+|---------|------|------|
+| `design_state.md` | プロジェクトルート | **最重要。常に最新に保つ。エージェント引き継ぎの核心** |
+| `.mcp.json` | プロジェクトルート | MCPサーバー設定（全エージェント共用） |
+| `.claudeignore` | プロジェクルート | AIコンテキスト除外（トークン削減） |
+| `orchestrator.py` | プロジェクトルート | 汎用マルチエージェントオーケストレーター |
+| `check_env.sh` | `~/mcp-servers/` | 環境確認スクリプト |
 
 ---
 
-## 6. 環境チェックコマンド
+## 10. 環境確認コマンド
 
 ```bash
 # 環境全体の確認
 ~/mcp-servers/check_env.sh
 
-# MCPサーバー接続確認（Claude Code内）
+# MCPサーバー接続確認
 claude mcp list
 
-# CadQueryスクリプト手動実行
-~/mcp-env/bin/python3 cad/joint_adapter_v2.py
+# Ollamaの状態確認
+ollama list
+
+# Ollamaサービス状態
+systemctl is-active ollama
 ```
 
 ---
 
-## 7. 残作業（環境構築）
-
-| 項目 | コマンド | 状態 |
-|------|---------|------|
-| KiCadインストール | `sudo apt-get install -y kicad` | **要実行** |
-| PCBディレクトリ作成 | `mkdir -p ~/esp_projects/ratecaputa/pcb` | KiCad導入時 |
-
----
-
-## 8. ディレクトリ構成
+## 11. ディレクトリ構成
 
 ```
-~/ (ホームディレクトリ)
-├── mcp-env/                    # Python仮想環境（CadQuery + MCP SDK）
+~/ （ホームディレクトリ）
+├── mcp-env/                      # Python仮想環境（CadQuery + MCP SDK）
 └── mcp-servers/
-    ├── cadquery-mcp/
-    │   └── server.py           # CadQuery MCPサーバー
-    ├── kicad-mcp/
-    │   └── server.py           # KiCad MCPサーバー
-    └── check_env.sh            # 環境チェックスクリプト
+    ├── cadquery-mcp/server.py    # CadQuery MCPサーバー（5 tools）
+    ├── kicad-mcp/server.py       # KiCad MCPサーバー（6 tools）
+    └── check_env.sh              # 環境チェックスクリプト
 
-~/esp_projects/ratecaputa/      # プロジェクトリポジトリ
-├── .claudeignore               # AIコンテキスト除外設定
-├── .mcp.json                   # MCPサーバー設定（Claude Code / Codex CLI共用）
-├── design_state.md             # 引き継ぎファイル（★常に最新に保つ）
+~/esp_projects/ratecaputa/        # プロジェクトリポジトリ
+├── .claudeignore                 # AIコンテキスト除外設定
+├── .mcp.json                     # MCPサーバー設定（全エージェント共用）
+├── design_state.md               # 引き継ぎファイル（★常に最新に保つ）
+├── orchestrator.py               # 汎用マルチエージェントオーケストレーター
 ├── docs/
-│   └── dev_environment.md      # このファイル
-├── cad/                        # 3D CADスクリプト・出力
-│   ├── joint_adapter_v1.py
-│   ├── joint_adapter_v2.py
-│   └── ラテカピュータのコンピュータ部筐構成について.txt
-├── waveshare-c6/               # ESP32-C6ファームウェア
-├── xiao-c6/                    # XIAO C6関連
-└── i2c_scan/                   # I2Cスキャンツール
+│   └── dev_environment.md        # このファイル
+├── cad/                          # 3D CADスクリプト・出力
+├── pcb/                          # PCB設計ファイル（KiCad）
+├── waveshare-c6/                 # ESP32-C6ファームウェア
+├── xiao-c6/                      # XIAO C6関連
+└── i2c_scan/                     # I2Cスキャンツール
 ```

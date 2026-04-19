@@ -21,7 +21,7 @@
 
 | # | パーツ名 | 状態 |
 |---|---------|------|
-| 1 | ラテカセ底部ジョイントアダプタ | 設計中（v2まで試作） |
+| 1 | ラテカセ底部ジョイントアダプタ | 設計中（v2まで試作、v3検討中） |
 | 2 | U字パーツ | 未着手 |
 | 3 | フロントパネル | 未着手 |
 | 4 | 背面パネル | 未着手 |
@@ -34,18 +34,17 @@
 ## 現在の作業状況
 
 ### 完了済み
-- ジョイントアダプタ v1, v2 のCadQuery Pythonスクリプト作成
-- v1, v2 の STEP出力・3面図生成
+- ジョイントアダプタ v1, v2 のCadQuery Pythonスクリプト作成・STEP出力
 - PCF8574電源管理UIのESP32ファームウェア実装
 - i2c_scanツール作成
+- MCP開発環境構築（CadQuery MCP・KiCad MCP・.mcp.json・.claudeignore）
 
 ### 進行中
-- ジョイントアダプタの形状最終化（v2を元に調整中）
+- ジョイントアダプタ v3 の検討・設計
 
 ### 次にやること
-- ジョイントアダプタ形状の確定とv3検討
+- ジョイントアダプタ形状の確定（v3）
 - U字パーツの設計開始
-- MCPサーバー環境構築（CadQuery実行MCP）
 
 ---
 
@@ -58,8 +57,17 @@
 - フロント：液晶パネル配置のため一部断面形状が異なる
 - 背面：スイッチ電源の排熱露出のため形状考慮が必要
 - ジョイントアダプタの固定方法：
-  1. ラテカセ底部の台錐穴 + ねじ止め
+  1. ラテカセ底部の台錐穴 + ねじ止め（M3）
   2. ハンドル穴を活用したU字パーツとの連結
+
+### v2の主要寸法（確定値）
+- 外形: 440 x 263 mm、板厚 2mm
+- 外周壁: H5 x T2 mm
+- 中央抜き: 416 x 216 mm（十字形、4隅30mm角残し）
+- 前端実体: 40mm / 後端実体: 7mm
+- コーナー嵩上げ: 2mm
+- 台錐: R7.0→R6.8 / H5mm / M3穴φ3.2mm
+- コーナー中心位置: X=±193.0mm、Y=+76.5mm(前)/-109.5mm(後)
 
 ---
 
@@ -67,14 +75,17 @@
 
 ```
 ratecaputa/
+├── .claudeignore           # AIコンテキスト除外設定
+├── .mcp.json               # MCPサーバー設定（Claude Code / Codex CLI共用）
+├── design_state.md         # このファイル（★常に最新に保つ）
+├── docs/
+│   └── dev_environment.md  # 開発環境概要
 ├── cad/                    # 3D設計ファイル
-│   ├── joint_adapter_v1.py  # ジョイントアダプタv1
-│   ├── joint_adapter_v2.py  # ジョイントアダプタv2
-│   ├── *.step              # 出力STEPファイル（.claudeignoreで除外）
-│   └── IMG_*.jpeg          # 参照写真
+│   ├── joint_adapter_v1.py
+│   ├── joint_adapter_v2.py
+│   └── ラテカピュータのコンピュータ部筐構成について.txt
 ├── waveshare-c6/           # ESP32-C6ファームウェア
-├── i2c_scan/               # I2Cスキャンツール
-└── design_state.md         # このファイル（引き継ぎ用）
+└── i2c_scan/               # I2Cスキャンツール
 ```
 
 ---
@@ -83,16 +94,17 @@ ratecaputa/
 
 | 用途 | ツール | 状態 |
 |------|--------|------|
-| 3D CAD | CadQuery (Python) | WSLにインストール必要 |
+| 3D CAD | CadQuery 2.7.0 | ~/mcp-env で稼働中 |
+| CadQuery MCP | latecaputa-cadquery (5 tools) | ✓ 稼働中 |
+| KiCad MCP | latecaputa-kicad (6 tools) | ✓ 構築済み（KiCadインストール待ち） |
 | ファームウェア | ESP-IDF (idf.py) | 設定済み |
-| MCPサーバー | 未構築 | Phase 2で構築予定 |
-| PCB設計 | KiCad | 未着手 |
+| PCB設計 | KiCad | インストール要 |
 
 ---
 
 ## AIエージェントへの引き継ぎ指示
 
 1. このファイルと `cad/joint_adapter_v2.py` を最初に読むこと
-2. `.claudeignore` に従い、`build/` や `*.step` はコンテキストに含めないこと
-3. 作業完了後は「現在の作業状況」と「次にやること」を更新すること
-4. CadQueryスクリプト実行は `python3 <script>.py` でWSL上で行うこと
+2. CadQueryスクリプト実行: `~/mcp-env/bin/python3 cad/<script>.py`
+3. MCPツール `cadquery_run` でスクリプト実行可能
+4. 作業完了後は「現在の作業状況」と「次にやること」を更新すること

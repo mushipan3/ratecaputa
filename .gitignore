@@ -1,5 +1,31 @@
-build/
-managed_components/
-dependencies.lock
-sdkconfig.old
-.DS_Store
+# Build outputs
+**/build/
+**/managed_components/
+**/dependencies.lock
+
+# Binary CAD outputs
+**/*.stl
+**/*.step
+**/*.stp
+**/*.3mf
+
+# Images
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+
+# PCB outputs
+**/*.gbr
+**/*.drl
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+
+# Logs
+orchestrator.log
+
+# OS
+*.Zone.Identifier

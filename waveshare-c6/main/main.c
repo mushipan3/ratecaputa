@@ -26,14 +26,37 @@ static lv_indev_t              *lvgl_touch_indev = NULL;
 // 日本語フォント（lv_font_jp_16.cで定義）
 LV_FONT_DECLARE(lv_font_jp_16);
 
-static const char *CH_NAMES[POWER_CH_MAX] = {
-    "ラテカセ本体",
-    "スイッチ電源",
-    "Windows",
-    "Raspberry Pi",
+// デバイス番号・名前・対応GPIO
+typedef struct {
+    const char *label;   // ボタン表示名（番号付き）
+    const char *gpio;    // 対応GPIOラベル
+} ch_info_t;
+
+static const ch_info_t CH_INFO[POWER_CH_MAX] = {
+    { "1:ラテカセ本体",  "P0" },
+    { "2:スイッチ電源",  "P1" },
+    { "3:Windows",       "P2" },
+    { "4:Raspberry Pi",  "P3" },
 };
 
 static lv_obj_t *btn_list[POWER_CH_MAX];
+static lv_obj_t *gpio_led[POWER_CH_MAX];   // GPIOインジケーター（色付き四角）
+static lv_obj_t *gpio_label[POWER_CH_MAX]; // GPIO番号ラベル
+
+static void update_gpio_indicators(void)
+{
+    for (int i = 0; i < POWER_CH_MAX; i++) {
+        bool on = power_control_get(i);
+        // ON=緑、OFF=暗い赤
+        lv_obj_set_style_bg_color(gpio_led[i],
+            on ? lv_color_hex(0x00C853) : lv_color_hex(0x4A0000),
+            LV_PART_MAIN);
+        // ラベルに状態を付加
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%s", CH_INFO[i].gpio);
+        lv_label_set_text(gpio_label[i], buf);
+    }
+}
 
 static void btn_event_cb(lv_event_t *e)
 {
@@ -44,7 +67,9 @@ static void btn_event_cb(lv_event_t *e)
     power_control_set(ch, next);
 
     lv_obj_set_style_bg_color(btn, next ? lv_color_hex(0x2196F3) : lv_color_hex(0x555555), LV_PART_MAIN);
-    ESP_LOGI(TAG, "%s -> %s", CH_NAMES[ch], next ? "ON" : "OFF");
+    ESP_LOGI(TAG, "%s -> %s", CH_INFO[ch].label, next ? "ON" : "OFF");
+
+    update_gpio_indicators();
 }
 
 static void create_power_ui(void)
@@ -57,15 +82,15 @@ static void create_power_ui(void)
     lv_label_set_text(title, "電源管理");
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
     lv_obj_set_style_text_font(title, &lv_font_jp_16, LV_PART_MAIN);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 4);
 
     // 2x2グリッドボタン（ランドスケープ 320x172）
-    // ボタンサイズ: 140x58、マージン: 10px
+    // ボタンを少し小さくして下部にGPIOインジケーター帯を確保
     const int BTN_W = 140;
-    const int BTN_H = 58;
-    const int COL_OFFSET = 80;  // 中心からの横オフセット
-    const int ROW1_Y = 42;
-    const int ROW2_Y = 108;
+    const int BTN_H = 48;
+    const int COL_OFFSET = 80;
+    const int ROW1_Y = 28;
+    const int ROW2_Y = 83;
 
     int positions[POWER_CH_MAX][2] = {
         {-COL_OFFSET, ROW1_Y},  // CH0: 左上
@@ -84,11 +109,61 @@ static void create_power_ui(void)
         btn_list[i] = btn;
 
         lv_obj_t *label = lv_label_create(btn);
-        lv_label_set_text(label, CH_NAMES[i]);
+        lv_label_set_text(label, CH_INFO[i].label);
         lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
         lv_obj_set_style_text_font(label, &lv_font_jp_16, LV_PART_MAIN);
         lv_obj_center(label);
     }
+
+    // --- PCF8574 GPIOインジケーター帯 ---
+    // 画面下部に横一列で P0〜P3 を表示
+    // 各インジケーター: 幅60px、高さ22px、均等配置（中央揃え）
+    // 帯の上部に "PCF8574:" ラベル
+    const int IND_W     = 60;
+    const int IND_H     = 22;
+    const int IND_Y     = 140;   // 帯のY座標（画面下端 172 - 22 - 10）
+    const int IND_GAP   = 8;     // インジケーター間の隙間
+    // 4個合計幅: 4*60 + 3*8 = 264、左端: (320-264)/2 = 28
+    const int IND_START_X = 28;
+
+    // "PCF8574:" ラベル
+    lv_obj_t *gpio_title = lv_label_create(scr);
+    lv_label_set_text(gpio_title, "PCF8574:");
+    lv_obj_set_style_text_color(gpio_title, lv_color_hex(0xAAAAAA), LV_PART_MAIN);
+    lv_obj_set_style_text_font(gpio_title, &lv_font_jp_16, LV_PART_MAIN);
+    lv_obj_set_pos(gpio_title, 0, IND_Y + 3);
+    // 左端に "PCF8574:" を収めるため、インジケーターを右寄せにしてもよいが
+    // 横幅に余裕があるので左端ラベルなし版で全体センタリングする
+
+    // ラベルを非表示にしてインジケーターだけセンタリング（シンプル化）
+    lv_obj_add_flag(gpio_title, LV_OBJ_FLAG_HIDDEN);
+
+    for (int i = 0; i < POWER_CH_MAX; i++) {
+        int x = IND_START_X + i * (IND_W + IND_GAP);
+
+        // インジケーター本体（色付き角丸四角）
+        lv_obj_t *led = lv_obj_create(scr);
+        lv_obj_set_size(led, IND_W, IND_H);
+        lv_obj_set_pos(led, x, IND_Y);
+        lv_obj_set_style_bg_color(led, lv_color_hex(0x4A0000), LV_PART_MAIN); // 初期: OFF
+        lv_obj_set_style_radius(led, 5, LV_PART_MAIN);
+        lv_obj_set_style_border_color(led, lv_color_hex(0x888888), LV_PART_MAIN);
+        lv_obj_set_style_border_width(led, 1, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(led, 0, LV_PART_MAIN);
+        lv_obj_clear_flag(led, LV_OBJ_FLAG_SCROLLABLE);
+        gpio_led[i] = led;
+
+        // インジケーター内ラベル（"P0" 〜 "P3"）
+        lv_obj_t *lbl = lv_label_create(led);
+        lv_label_set_text(lbl, CH_INFO[i].gpio);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &lv_font_jp_16, LV_PART_MAIN);
+        lv_obj_center(lbl);
+        gpio_label[i] = lbl;
+    }
+
+    // 初期状態を反映
+    update_gpio_indicators();
 }
 
 static esp_err_t app_lvgl_init(void)

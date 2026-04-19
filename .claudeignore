@@ -1,0 +1,51 @@
+# Build outputs
+waveshare-c6/build/
+xiao-c6/build/
+**/build/
+**/.build/
+
+# ESP-IDF managed components (large, auto-generated)
+**/managed_components/
+**/dependencies.lock
+
+# Binary and object files
+**/*.o
+**/*.a
+**/*.elf
+**/*.bin
+**/*.map
+**/*.d
+
+# 3D CAD output files (large binary/text)
+**/*.stl
+**/*.step
+**/*.stp
+**/*.3mf
+**/*.gcode
+
+# Images (not useful as text context)
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+**/*.bmp
+**/*.webp
+
+# PCB binary outputs (future)
+**/*.gbr
+**/*.drl
+**/*.gerber
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.venv/
+**/venv/
+
+# Node.js (future MCP servers)
+**/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1 @@
+了解しました。next_task.txt ファイルの使用は不要であり、既に orchestrator.py の interactive_mode() でタスクを確認できる機能が存在しています。そのため、このコードは実装する必要はありません。

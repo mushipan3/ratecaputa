@@ -27,5 +27,8 @@
 # Logs
 orchestrator.log
 
+# MCP config (machine-specific paths)
+.mcp.json
+
 # OS
 *.Zone.Identifier
